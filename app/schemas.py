@@ -58,6 +58,7 @@ class GenConfig(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User's input message for the chat")
+    message_type: Literal["action", "speech"] = Field("speech", description="Type of the message: 'action' or 'speech'")
     user_name: Optional[str] = Field("User", description="Name of the user")
     persona: Persona = Field(..., description="Persona to use for the chat")
     chat_history: Optional[List[Message]] = Field([], description="List of previous chat messages")
@@ -101,8 +102,13 @@ class ChatResponse(BaseModel):
 
 
 # ========== Schema Definitions for groq request ==========
-class GroqResponse(BaseModel):
+class GroqSpeechResponse(BaseModel):
     narrative: str = Field(..., description="Write in a descriptive, novel-like 3rd person perspective. Focus on the story, scene, and actions.")
     character_message: str = Field(..., description="Write the actual spoken dialogue, strictly adhering to the Speaking Style.")
     image_prompt: str = Field(..., description="A concise English prompt to generate an image describing the current scene.")
-    next_state_description: Optional[List[UserSelection]] = Field(None, description="Choices for the user based on [Current Story Context] and [Possible Story Branches]")
+    next_state_description: List[UserSelection] = Field(None, description="Choices for the user based on [Current Story Context] and [Possible Story Branches]")
+
+class GroqActionResponse(BaseModel):
+    narrative: str = Field(..., description="Write in a descriptive, novel-like 3rd person perspective. Focus on the story, scene, and actions.")
+    character_message: str = Field(..., description="Write the actual spoken dialogue, strictly adhering to the Speaking Style.")
+    image_prompt: str = Field(..., description="A concise English prompt to generate an image describing the current scene.")

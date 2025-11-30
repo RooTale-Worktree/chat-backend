@@ -6,9 +6,10 @@ from groq import Groq
 from dotenv import load_dotenv
 from typing import Dict
 
-from app.core.prompt_builder import build_prompt
+from app.core.prompt_speech import build_prompt as build_speech_prompt
+from app.core.prompt_action import build_prompt as build_action_prompt
 from app.core.story_retriever import retrieve_story_context
-from app.schemas import GroqResponse
+from app.schemas import GroqSpeechResponse, GroqActionResponse
 
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -26,6 +27,7 @@ def handle_chat(payload: Dict) -> Dict:
 
     # Parse payload
     message = payload.get("message", "")
+    message_type = payload.get("message_type", "speech")
     user_name = payload.get("user_name", "User")
     persona = payload.get("persona", None)
     chat_history = payload.get("chat_history", [])
@@ -59,7 +61,10 @@ def handle_chat(payload: Dict) -> Dict:
         "user_message": message,
         "reasoning_effort": gen.get("reasoning_effort", "low"),
     }
-    prompt = build_prompt(prompt_input)
+    if message_type == "speech":
+        prompt = build_speech_prompt(prompt_input)
+    else:
+        prompt = build_action_prompt(prompt_input)
     print(f"\n[System] prompt: {prompt}\n")
 
     # return {
@@ -86,7 +91,7 @@ def handle_chat(payload: Dict) -> Dict:
             "type": "json_schema",
             "json_schema": {
                 "name": "ChatResponse",
-                "schema": GroqResponse.model_json_schema(),
+                "schema": GroqSpeechResponse.model_json_schema() if message_type == "speech" else GroqActionResponse.model_json_schema(),
             }
         },
         reasoning_effort=gen.get("reasoning_effort", "low"),
