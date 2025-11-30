@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from typing import Dict
 
 from app.core.prompt_builder import build_prompt
-# from app.core.story_retriever import retrieve_story_context
+from app.core.story_retriever import retrieve_story_context
 from app.schemas import GroqResponse
 
 load_dotenv()
@@ -38,13 +38,13 @@ def handle_chat(payload: Dict) -> Dict:
     chat_context = chat_history
 
     story_context = []
-    # if story_title:
-    #     tmp_time = time.time()
-    #     story_context = retrieve_story_context(
-    #         story_title=story_title,
-    #         user_query=message
-    #     )
-    #     timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
+    if story_title:
+        tmp_time = time.time()
+        story_context = retrieve_story_context(
+            story_title=story_title,
+            user_query=message
+        )
+        timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
     
     prompt_input = {
         "persona": persona,
@@ -55,6 +55,7 @@ def handle_chat(payload: Dict) -> Dict:
         "reasoning_effort": gen.get("reasoning_effort", "low"),
     }
     prompt = build_prompt(prompt_input)
+    print(f"[System] prompt: {prompt}")
 
     # API Call
     tmp_time = time.time()
