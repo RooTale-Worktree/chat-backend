@@ -7,7 +7,7 @@ from llama_index.core import StorageContext, load_index_from_storage, VectorStor
 from llama_index.core.schema import NodeWithScore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings
-
+from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
 
 STORY_INDEX_BASE_DIR = "app/story_indexes"
 EMBED_MODEL_NAME = "jhgan/ko-sbert-nli"
@@ -53,7 +53,7 @@ def _load_story_index(story_title: str) -> Optional[VectorStoreIndex]:
         return None
 
 
-def retrieve_story_context(story_title: str, user_query: str) -> List:
+def retrieve_story_context(story_title: str, user_query: str, current_depth: Optional[int] = None) -> List:
     """
     Main retrieval function for story context.
     Args:
@@ -70,7 +70,20 @@ def retrieve_story_context(story_title: str, user_query: str) -> List:
     story_index = _load_story_index(story_title)
     
     if story_index:
-        retriever = story_index.as_retriever()
+        filters = None
+        if current_depth is not None:
+            filters = MetadataFilters(
+                filters=[
+                    MetadataFilter(
+                        key="depth",             
+                        value=current_depth,     
+                        operator=FilterOperator.LTE,# LTE = (<=)
+                    )
+                ]
+            )
+    
+
+        retriever = story_index.as_retriever(filters=filters)
         retrieved_nodes = retriever.retrieve(user_query)
         all_nodes.extend(retrieved_nodes)
     else:
