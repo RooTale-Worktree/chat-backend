@@ -31,6 +31,8 @@ def handle_chat(payload: Dict) -> Dict:
     chat_history = payload.get("chat_history", [])
     chat_rag_config = payload.get("chat_rag_config", {})
     story_title = payload.get("story_title", None)
+    current_story_state = payload.get("current_story_state", None)
+    child_story_states = payload.get("child_story_states", [])
     model_config = payload.get("model_cfg", {})
     gen = payload.get("gen", {})
     meta = payload.get("meta", {})
@@ -42,7 +44,9 @@ def handle_chat(payload: Dict) -> Dict:
         tmp_time = time.time()
         story_context = retrieve_story_context(
             story_title=story_title,
-            user_query=message
+            user_query=message,
+            current_story_state=current_story_state,
+            child_story_states=child_story_states,
         )
         timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
     
@@ -97,6 +101,7 @@ def handle_chat(payload: Dict) -> Dict:
         "narrative": parsed_data.get("narrative", ""),
         "character_message": parsed_data.get("character_message", ""),
         "image_prompt": parsed_data.get("image_prompt", ""),
+        "next_state_id": parsed_data.get("next_state_id", None),
         "usage": usage,
         "timing": timing,
     }
