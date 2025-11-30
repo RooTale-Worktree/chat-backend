@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import time
+import json
 from groq import Groq
 from dotenv import load_dotenv
 from typing import Dict
@@ -78,11 +79,23 @@ def handle_chat(payload: Dict) -> Dict:
 
     timing["total_ms"] = int((time.time() - start_time) * 1000)
 
-    
+    # Parse response
+    content_str = response.choices[0].message.content
+    parsed_data = json.loads(content_str)
+
+    # Usage info
+    response_usage = response.usage
+    usage = {
+        "prompt_tokens": response_usage.prompt_tokens,
+        "completion_tokens": response_usage.completion_tokens,
+        "total_tokens": response_usage.total_tokens,
+        "finish_reason": response.choices[0].finish_reason,
+    }
 
     return {
-        "narrative": "",
-        "character_message": "",
-        "image_prompt": "",
+        "narrative": parsed_data.get("narrative", ""),
+        "character_message": parsed_data.get("character_message", ""),
+        "image_prompt": parsed_data.get("image_prompt", ""),
+        "usage": usage,
         "timing": timing,
     }
