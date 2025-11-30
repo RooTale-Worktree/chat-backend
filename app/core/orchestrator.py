@@ -49,6 +49,7 @@ def handle_chat(payload: Dict) -> Dict:
             child_story_states=child_story_states,
         )
         timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
+    print(f"\n[System] story_context: {story_context}\n")
     
     prompt_input = {
         "persona": persona,
@@ -59,7 +60,21 @@ def handle_chat(payload: Dict) -> Dict:
         "reasoning_effort": gen.get("reasoning_effort", "low"),
     }
     prompt = build_prompt(prompt_input)
-    print(f"[System] prompt: {prompt}")
+    print(f"\n[System] prompt: {prompt}\n")
+
+    # return {
+    #     "narrative": "This is a placeholder narrative.",
+    #     "character_message": "This is a placeholder character message.",
+    #     "image_prompt": "This is a placeholder image prompt.",
+    #     "next_state_id": None,
+    #     "usage": {
+    #         "prompt_tokens": 0,
+    #         "completion_tokens": 0,
+    #         "total_tokens": 0,
+    #         "finish_reason": "placeholder",
+    #     },
+    #     "timing": timing,
+    # }
 
     # API Call
     tmp_time = time.time()
@@ -87,6 +102,7 @@ def handle_chat(payload: Dict) -> Dict:
     # Parse response
     content_str = response.choices[0].message.content
     parsed_data = json.loads(content_str)
+    print(f"\n[System] parsed_data: {parsed_data}\n")
 
     # Usage info
     response_usage = response.usage
@@ -101,7 +117,7 @@ def handle_chat(payload: Dict) -> Dict:
         "narrative": parsed_data.get("narrative", ""),
         "character_message": parsed_data.get("character_message", ""),
         "image_prompt": parsed_data.get("image_prompt", ""),
-        "next_state_id": parsed_data.get("next_state_id", None),
+        "next_state_description": parsed_data.get("next_state_description", None),
         "usage": usage,
         "timing": timing,
     }

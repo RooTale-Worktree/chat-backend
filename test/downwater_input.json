@@ -1,5 +1,5 @@
 {
-  "message": "회의장 입구 쪽이 너무 조용해. 이상할 정도로 고요한데... 네 귀에는 뭔가 들려? 함정의 징조 같은 미세한 진동이라도.",
+  "message": "카이, 나는 싸우기 위한 마음의 준비를 마쳤어. 너는 어때? 준비됐어?",
   "user_name": "우진",
   "persona": {
     "character_name": "카이 (Kai)",
@@ -49,6 +49,8 @@
   },
   "chat_history": [],
   "story_title": "downwater",
+  "current_story_state": "d16a682c-0b40-44cc-a328-935ffc31aa1e_4",
+  "child_story_states": ["d16a682c-0b40-44cc-a328-935ffc31aa1e_8", "d16a682c-0b40-44cc-a328-935ffc31aa1e_13"],
   "model_cfg": {
     "model_name": "openai/gpt-oss-20b"
   },

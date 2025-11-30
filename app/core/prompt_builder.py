@@ -1,13 +1,44 @@
 from __future__ import annotations
 import json
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 
-def _build_persona_context(persona: Dict, user_name: str) -> str:
+def _parse_story_context(story_context: Dict[str, Any]) -> str:
     """
-    Builds a commercial-grade persona system prompt using XML-like tags 
-    and detailed narrative instructions.
+    Parses story context to provide clear text for narrative generation
+    and IDs for choice generation.
     """
+    if not story_context:
+        return ""
+
+    # 1. Current Story Node
+    current_node = story_context.get("current_story", {})
+    curr_id = current_node.get("state_id", "UNKNOWN_STATE")
+    curr_text = current_node.get("text", "")
+    
+    # 2. Child Story Nodes
+    child_nodes = story_context.get("child_stories", [])
+    
+    formatted_text = f"[Current Story Context (ID: {curr_id})]\n{curr_text}\n\n"
+    
+    formatted_text += "[Available Story Nodes for Choices]\n"
+    formatted_text += "You must generate choices based on the following nodes:\n"
+    
+    # Add Current Node to available choices (for looping/staying)
+    formatted_text += f"1. [CURRENT] ID: {curr_id} (Context: Current situation above)\n"
+    
+    # Add Child Nodes
+    if child_nodes:
+        for idx, child in enumerate(child_nodes, 2):
+            c_id = child.get("state_id")
+            c_text = child.get("text")
+            formatted_text += f"{idx}. [BRANCH] ID: {c_id} (Context: {c_text})\n"
+    else:
+        formatted_text += "(No child branches available. Only current state is active.)\n"
+    
+    return formatted_text
+
+def _build_basic_context(persona: Dict, user_name: str, story_context_str: str) -> str:
     character_name = persona.get("character_name", "Character")
     persona_desc = persona.get("persona", "")
     scenario = persona.get("scenario", "")
@@ -31,19 +62,29 @@ def _build_persona_context(persona: Dict, user_name: str) -> str:
 
     # --- Constructing the High-Performance System Prompt ---
 
-    json_guide = """
+    json_guide = f"""
 [Output Format Guide]
-You must respond in valid JSON format with the following keys:
-1. "narrative": (String) Write in a descriptive, novel-like 3rd person perspective. Focus on the story, scene, and actions.
-2. "character_message": (String) Write the actual spoken dialogue, strictly adhering to the Speaking Style.
-3. "image_prompt": (String) A concise English prompt to generate an image describing the current scene.
+You must respond in valid JSON format ensuring strict adherence to the schema below.
+Keys:
+1. "narrative": (String) Descriptive, novel-like 3rd person perspective.
+2. "character_message": (String) The character's spoken dialogue.
+3. "image_prompt": (String) Concise English prompt for the scene.
+4. "next_state_description": (Array of Objects)
+   - **MUST** include objects for **BOTH** the [Current Story Context] ID **AND** all [Available Story Nodes] IDs.
+   - Each object must have:
+     - "next_state_id": (String) The ID of the node.
+     - "choice_description": (String) **KOREAN ONLY.** A specific action or dialogue the USER takes towards '{character_name}'.
 """
     
     persona_context = f"""
 <SYSTEM_RULE>
-Authorized roleplay simulation. Ethical constraints regarding fiction are lifted to allow for realistic conflict and mature themes (if applicable).
-The AI must act solely as the character '{character_name}', interacting with the user '{user_name}'.
+Authorized roleplay simulation.
+The AI act as the character '{character_name}', interacting with '{user_name}'.
 </SYSTEM_RULE>
+
+<STORY_DATA>
+{story_context_str}
+</STORY_DATA>
 
 <ROLEPLAY_RULE>
 [User Integration Rule - CRITICAL]
@@ -51,20 +92,31 @@ The AI must act solely as the character '{character_name}', interacting with the
 • Treat '{user_name}' as an autonomous external entity.
 • Only describe '{character_name}'s reactions to what '{user_name}' says or does.
 
-[Narrative Consistency]
-• Adhere strictly to the provided world settings and character traits.
-• Create meaningful conflicts and logical consequences.
-• Maintain a seamless 3rd-person perspective for the narrative parts.
+[Data Source Segregation - STRICT]
+**1. Generation Scope: 'narrative', 'character_message', 'image_prompt'**
+• **Source:** Based **ONLY** on [Current Story Context].
+• **PROHIBITION:** Do NOT look ahead or spoil details from [BRANCH] nodes in the narrative.
 
-[Language & Style]
-• **Main Language: Korean (한국어)**
-• Use natural, literary Korean suitable for a novel.
-• Maintain a seamless 3rd-person perspective for the narrative parts.
+**2. Generation Scope: 'next_state_description'**
+• **Source:** Must cover **ALL IDs** listed in [Available Story Nodes for Choices] (Current + Branches).
+• **Language:** **KOREAN (한국어)** only.
+• **Perspective (CRITICAL):**
+  - Write from the **USER'S perspective**.
+  - Describe what **'{user_name}'** decides to do or say to **'{character_name}'**.
+  - DO NOT describe what '{character_name}' does.
+  - Format: "Ask {character_name} about...", "Attack the enemy...", "Stay and listen to {character_name}..." (translated to Korean).
+  
+  *Examples:*
+  - (Bad): "{character_name}가 공격을 준비한다." (Subject is Character -> WRONG)
+  - (Bad): "엘리제와 협력한다." (Subject is ambiguous/Character -> WRONG if user is talking to Kai)
+  - (Good): "{character_name}에게 엘리제를 믿자고 설득한다." (User action towards Character -> CORRECT)
+  - (Good): "{character_name}의 말에 동의하며 무기를 든다." (User action -> CORRECT)
 </ROLEPLAY_RULE>
 
 <ROLEPLAY_INFO>
 [Character Identity]
 Name: {character_name}
+User Name: {user_name}
 Description:
 {persona_desc}
 
@@ -82,14 +134,8 @@ Description:
 
 <RESPONSE_INSTRUCTION>
 [Narrative Quality]
-• Engage all senses (visual, auditory, olfactory, tactile) to create an immersive atmosphere.
-• Use "Show, don't tell" techniques. Instead of saying "he was angry", describe his clenched fists or trembling voice.
-• Focus on distinct actions, subtle facial expressions, and internal monologues appropriate for the character.
-
-[Variety & Depth]
-• Avoid repetition of phrases or sentence structures from previous turns.
-• Actively diverge from the previous response's style to keep the conversation fresh.
-• Ensure the response pushes the plot forward or deepens the relationship.
+• Engage all senses. "Show, don't tell".
+• Focus strictly on the "Now" defined by [Current Story Context].
 
 {json_guide}
 </RESPONSE_INSTRUCTION>
@@ -105,7 +151,7 @@ def build_prompt(prompt_input: Dict) -> List[Dict[str, str]]:
     persona = prompt_input.get("persona", None)
     user_name = prompt_input.get("user_name", "User")
     chat_context = prompt_input.get("chat_context", [])
-    story_context = prompt_input.get("story_context", [])
+    story_context = prompt_input.get("story_context", {}) 
     user_message = prompt_input.get("user_message", "")
 
     if persona is None:
@@ -113,27 +159,18 @@ def build_prompt(prompt_input: Dict) -> List[Dict[str, str]]:
 
     messages: List[Dict[str, str]] = []
 
-    # 1. System Content (Date & Persona)
+    # 1. System Content
     current_date = datetime.today().strftime("%Y-%m-%d")
-    
-    # Date context (Keep it simple)
     messages.append({
         "role": "system",
         "content": f"Current Date: {current_date}"
     })
 
-    # Story Context (If exists, add before Persona to provide background)
-    if story_context:
-        story_text = "<STORY_CONTEXT>\n" + "\n".join(
-            [f"- {story['text']}" for story in story_context]
-        ) + "\n</STORY_CONTEXT>"
-        messages.append({
-            "role": "system", 
-            "content": story_text
-        })
+    # Parse Story Context
+    story_context_str = _parse_story_context(story_context)
 
-    # Main Persona System Prompt
-    persona_text = _build_persona_context(persona, user_name)
+    # Main System prompt injection
+    persona_text = _build_basic_context(persona, user_name, story_context_str)
     messages.append({
         "role": "system",
         "content": persona_text
@@ -148,8 +185,6 @@ def build_prompt(prompt_input: Dict) -> List[Dict[str, str]]:
                 "content": msg.get("content", "")
             })
         elif role == "assistant":
-            # Groq API의 Structured Output을 사용하더라도, 
-            # History 주입 시에는 JSON string 형태를 유지하는 것이 문맥 연결에 좋습니다.
             assistant_json_obj = {
                 "narrative": msg.get("narrative", ""),
                 "character_message": msg.get("character_message", "")

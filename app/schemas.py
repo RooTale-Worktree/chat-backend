@@ -1,5 +1,4 @@
 from __future__ import annotations
-from uuid import UUID
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Literal
 from datetime import datetime
@@ -64,8 +63,8 @@ class ChatRequest(BaseModel):
     chat_history: Optional[List[Message]] = Field([], description="List of previous chat messages")
     chat_rag_config: Optional[ChatRAGConfig] = Field(None, description="Configuration for chat retrieval-augmented generation")
     story_title: Optional[str] = Field(None, description="Title of the story context")
-    current_story_state: Optional[UUID] = Field(None, description="Current state or chapter of the story")
-    child_story_states: Optional[List[UUID]] = Field(None, description="List of child story states or chapters") 
+    current_story_state: Optional[str] = Field(None, description="Current state or chapter of the story")
+    child_story_states: Optional[List[str]] = Field(None, description="List of child story states or chapters") 
     model_cfg: Optional[ModelConfig] = Field(None, description="Configuration for the language model")
     gen: Optional[GenConfig] = Field(None, description="Generation configuration for the language model")
     meta: Optional[Dict] = Field(None, description="Additional metadata for the chat request")
@@ -79,8 +78,8 @@ class Usage(BaseModel):
     finish_reason: str = Field(..., description="Reason for finishing the generation")
 
 class UserSelection(BaseModel):
-    next_state_id: UUID = Field(..., description="ID of the next state or chapter selected by the user")
-    choice_description: str = Field(..., description="Description of the user's choice leading to the next state")
+    next_state_id: str = Field(..., description="The ID from the story branch.")
+    choice_description: str = Field(..., description="A short, immersive text describing the user's action or dialogue option corresponding to that branch (e.g., \"Ask him why.\", \"Draw your sword.\")")
 
 class Timing(BaseModel):
     message_embed_ms: Optional[int] = Field(None, description="Time taken to compute message embeddings in milliseconds")
@@ -106,3 +105,4 @@ class GroqResponse(BaseModel):
     narrative: str = Field(..., description="Write in a descriptive, novel-like 3rd person perspective. Focus on the story, scene, and actions.")
     character_message: str = Field(..., description="Write the actual spoken dialogue, strictly adhering to the Speaking Style.")
     image_prompt: str = Field(..., description="A concise English prompt to generate an image describing the current scene.")
+    next_state_description: Optional[List[UserSelection]] = Field(None, description="Choices for the user based on [Current Story Context] and [Possible Story Branches]")
