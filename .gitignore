@@ -1,0 +1,17 @@
+*.env
+.DS_Store
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.db
+
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
