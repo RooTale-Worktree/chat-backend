@@ -50,11 +50,11 @@ class ModelConfig(BaseModel):
 class GenConfig(BaseModel):
     temperature: float = Field(0.5, description="Sampling temperature for text generation")
     top_p: float = Field(0.9, description="Top-p (nucleus) sampling parameter")
-    max_new_tokens: int = Field(256, description="Maximum number of new tokens to generate")
+    max_new_tokens: int = Field(1024, description="Maximum number of new tokens to generate")
     repetition_penalty: float = Field(1.05, description="Repetition penalty for text generation")
     frequency_penalty: float = Field(0.0, description="Frequency penalty for text generation")
     stop: Optional[List[str]] = Field(None, description="List of stop tokens for generation termination")
-    reasoning_effort: Literal["low", "medium", "high"] = Field("medium", description="Level of reasoning effort for generation")
+    reasoning_effort: Literal["low", "medium", "high"] = Field("low", description="Level of reasoning effort for generation")
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User's input message for the chat")
@@ -105,4 +105,4 @@ class GroqResponse(BaseModel):
     narrative: str = Field(..., description="Write in a descriptive, novel-like 3rd person perspective. Focus on the story, scene, and actions.")
     character_message: str = Field(..., description="Write the actual spoken dialogue, strictly adhering to the Speaking Style.")
     image_prompt: str = Field(..., description="A concise English prompt to generate an image describing the current scene.")
-    next_state_description: List[UserSelection] = Field(None, description="Choices for the user based on [Current Story Context] and [Possible Story Branches]")
+    next_state_description: Optional[List[UserSelection]] = Field(None, description="Choices for the user based on [Current Story Context] and [Possible Story Branches]")

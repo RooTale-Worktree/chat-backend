@@ -29,12 +29,12 @@ def handle_chat(payload: Dict) -> Dict:
     user_name = payload.get("user_name", "User")
     persona = payload.get("persona", None)
     chat_history = payload.get("chat_history", [])
-    chat_rag_config = payload.get("chat_rag_config", {})
+    chat_rag_config = payload.get("chat_rag_config") or {}
     story_title = payload.get("story_title", None)
     current_story_state = payload.get("current_story_state", None)
     child_story_states = payload.get("child_story_states", [])
-    model_config = payload.get("model_cfg", {})
-    gen = payload.get("gen", {})
+    model_config = payload.get("model_cfg") or {}
+    gen = payload.get("gen") or {}
     meta = payload.get("meta", {})
 
     chat_context = chat_history
@@ -92,7 +92,7 @@ def handle_chat(payload: Dict) -> Dict:
         reasoning_effort=gen.get("reasoning_effort", "low"),
         temperature=gen.get("temperature", 0.5),
         top_p=gen.get("top_p", 0.9),
-        max_completion_tokens=gen.get("max_new_tokens", 256),
+        max_tokens=gen.get("max_new_tokens", 1024),
         frequency_penalty=gen.get("frequency_penalty", 0),
     )
     timing["generate_ms"] = int((time.time() - tmp_time) * 1000)

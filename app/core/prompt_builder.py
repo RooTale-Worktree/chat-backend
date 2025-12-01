@@ -69,8 +69,9 @@ Keys:
 1. "narrative": (String) Descriptive, novel-like 3rd person perspective.
 2. "character_message": (String) The character's spoken dialogue.
 3. "image_prompt": (String) Concise English prompt for the scene.
-4. "next_state_description": (Array of Objects)
-   - **MUST** include objects for **BOTH** the [Current Story Context] ID **AND** all [Available Story Nodes] IDs.
+4. "next_state_description": (Array of Objects or Null)
+   - If [Available Story Nodes] are provided, you **MUST** include objects for them.
+   - If NO story nodes are provided, return an empty list or null.
    - Each object must have:
      - "next_state_id": (String) The ID of the node.
      - "choice_description": (String) **KOREAN ONLY.** A specific action or dialogue the USER takes towards '{character_name}'.
