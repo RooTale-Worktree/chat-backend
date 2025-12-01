@@ -4,7 +4,7 @@ import time
 import json
 from groq import Groq
 from dotenv import load_dotenv
-from typing import Dict
+from typing import Dict, Iterator
 
 from app.core.prompt_builder import build_prompt
 from app.core.story_retriever import retrieve_story_context
@@ -13,16 +13,16 @@ from app.schemas import GroqResponse
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-def handle_chat(payload: Dict) -> Dict:
+def handle_chat(payload: Dict) -> Iterator[str]:
     """
-    Handle a single chat turn.    
+    Handle a single chat turn with streaming.    
     Args:
         payload: ChatRequest dict
     Returns:
-        ChatResponse: dict
+        Iterator[str]: SSE formatted chunks
     """
-    timing = {}
-    start_time = time.time()
+    # timing = {} # Timing is less relevant in streaming
+    # start_time = time.time()
 
     # Parse payload
     message = payload.get("message", "")
@@ -41,14 +41,14 @@ def handle_chat(payload: Dict) -> Dict:
 
     story_context = []
     if story_title:
-        tmp_time = time.time()
+        # tmp_time = time.time()
         story_context = retrieve_story_context(
             story_title=story_title,
             user_query=message,
             current_story_state=current_story_state,
             child_story_states=child_story_states,
         )
-        timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
+        # timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
     print(f"\n[System] story_context: {story_context}\n")
     
     prompt_input = {
@@ -62,62 +62,23 @@ def handle_chat(payload: Dict) -> Dict:
     prompt = build_prompt(prompt_input)
     print(f"\n[System] prompt: {prompt}\n")
 
-    # return {
-    #     "narrative": "This is a placeholder narrative.",
-    #     "character_message": "This is a placeholder character message.",
-    #     "image_prompt": "This is a placeholder image prompt.",
-    #     "next_state_id": None,
-    #     "usage": {
-    #         "prompt_tokens": 0,
-    #         "completion_tokens": 0,
-    #         "total_tokens": 0,
-    #         "finish_reason": "placeholder",
-    #     },
-    #     "timing": timing,
-    # }
-
     # API Call
-    tmp_time = time.time()
     client = Groq()
-    response = client.chat.completions.create(
+    stream = client.chat.completions.create(
         model=model_config.get("model_name", "openai/gpt-oss-20b"),
         messages=prompt,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "ChatResponse",
-                "schema": GroqResponse.model_json_schema(),
-            }
-        },
-        reasoning_effort=gen.get("reasoning_effort", "low"),
+        # response_format={"type": "json_object"}, # Disable strict JSON mode for true streaming
+        # reasoning_effort=gen.get("reasoning_effort", "low"),
         temperature=gen.get("temperature", 0.5),
         top_p=gen.get("top_p", 0.9),
-        max_tokens=gen.get("max_new_tokens", 1024),
+        max_completion_tokens=gen.get("max_new_tokens", 1024),
         frequency_penalty=gen.get("frequency_penalty", 0),
+        stream=True
     )
-    timing["generate_ms"] = int((time.time() - tmp_time) * 1000)
 
-    timing["total_ms"] = int((time.time() - start_time) * 1000)
-
-    # Parse response
-    content_str = response.choices[0].message.content
-    parsed_data = json.loads(content_str)
-    print(f"\n[System] parsed_data: {parsed_data}\n")
-
-    # Usage info
-    response_usage = response.usage
-    usage = {
-        "prompt_tokens": response_usage.prompt_tokens,
-        "completion_tokens": response_usage.completion_tokens,
-        "total_tokens": response_usage.total_tokens,
-        "finish_reason": response.choices[0].finish_reason,
-    }
-
-    return {
-        "narrative": parsed_data.get("narrative", ""),
-        "character_message": parsed_data.get("character_message", ""),
-        "image_prompt": parsed_data.get("image_prompt", ""),
-        "next_state_description": parsed_data.get("next_state_description", None),
-        "usage": usage,
-        "timing": timing,
-    }
+    for chunk in stream:
+        content = chunk.choices[0].delta.content
+        if content:
+            # Yield raw content delta for true streaming effect
+            # Client must handle partial JSON parsing if needed
+            yield f"data: {content}\n\n"
