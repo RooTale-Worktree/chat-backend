@@ -65,7 +65,6 @@ docker run -p 8000:8000 --env-file .env chat-backend
 ```json
 {
   "message": "string (필수)",
-  "message_type": "speech | action (선택, 기본값: speech)",
   "user_name": "string (선택, 기본값: User)",
   "persona": {
     "character_name": "string (필수)",
@@ -127,8 +126,7 @@ docker run -p 8000:8000 --env-file .env chat-backend
 #### Request 필드 설명
 
 **기본 필드**
-- `message`: 사용자의 입력 메시지 또는 액션
-- `message_type`: 메시지 타입 (`"speech"`: 대사, `"action"`: 행동)
+- `message`: 사용자의 입력 메시지
 - `user_name`: 사용자 이름
 
 **persona** (캐릭터 설정)
@@ -312,16 +310,21 @@ curl -X POST "http://localhost:8000/v1/chat" \
 backend/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI 앱 진입점
-│   ├── schemas.py           # Pydantic 모델 정의
+│   ├── main.py                  # FastAPI 앱 진입점
+│   ├── schemas.py               # Pydantic 모델 정의
 │   ├── core/
 │   │   ├── __init__.py
 │   │   ├── orchestrator.py      # 메인 로직 조율
 │   │   ├── prompt_builder.py    # 프롬프트 생성
 │   │   └── story_retriever.py   # 스토리 컨텍스트 검색
-│   └── routers/
-│       ├── __init__.py
-│       └── chat.py          # 채팅 엔드포인트
+│   ├── routers/
+│   │   ├── __init__.py
+│   │   └── chat.py              # 채팅 엔드포인트
+│   └── story_indexes/           # 스토리 인덱스 파일들
+│       └── downwater/           # 예: 심해의 공명 도시
+│           ├── docstore.json
+│           ├── index_store.json
+│           └── story_info.json
 ├── requirements.txt
 ├── Dockerfile
 └── Readme.md
@@ -331,9 +334,10 @@ backend/
 
 - **FastAPI**: 고성능 웹 프레임워크
 - **Pydantic**: 데이터 검증 및 직렬화
-- **Groq API**: LLM 추론 (OpenAI 호환 API)
-- **LlamaIndex**: 스토리 컨텍스트 검색 (선택사항)
-- **Sentence Transformers**: 텍스트 임베딩 (선택사항)
+- **Groq API**: LLM 추론 및 구조화된 출력
+- **LlamaIndex**: 스토리 인덱스 관리 (선택사항)
+- **Sentence Transformers**: 한국어 텍스트 임베딩 (선택사항, ko-sbert-nli)
+- **PyTorch**: 딥러닝 프레임워크 (임베딩 모델용)
 
 ## 라이선스
 
