@@ -29,15 +29,19 @@ def handle_chat(payload: Dict) -> Iterator[str]:
     user_name = payload.get("user_name", "User")
     persona = payload.get("persona", None)
     chat_history = payload.get("chat_history", [])
-    chat_rag_config = payload.get("chat_rag_config") or {}
     story_title = payload.get("story_title", None)
-    current_story_state = payload.get("current_story_state", None)
-    child_story_states = payload.get("child_story_states", [])
+    story = payload.get("story", None)
     model_config = payload.get("model_cfg") or {}
     gen = payload.get("gen") or {}
     meta = payload.get("meta", {})
 
     chat_context = chat_history
+
+    current_story_state = story.get("current_story_state", {}).get("node_id") if story else None
+    child_story_states = []
+    if story and "child_story_states" in story:
+        for child in story["child_story_states"]:
+            child_story_states.append(child.get("node_id"))
 
     story_context = []
     if story_title:
@@ -49,7 +53,7 @@ def handle_chat(payload: Dict) -> Iterator[str]:
             child_story_states=child_story_states,
         )
         # timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
-    print(f"\n[System] story_context: {story_context}\n")
+    print(f"\n[System] story_context: {story_context}")
     
     prompt_input = {
         "persona": persona,

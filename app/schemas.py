@@ -21,22 +21,8 @@ class Message(BaseModel):
     narrative: Optional[str] = Field(None, description="Narrative text associated with the message")
     character_message: str = Field(..., description="Message from the character")
     role: str = Field(..., description="Role of the message sender (e.g., user, assistant)")
-
-    embedding: Optional[List[float]] = Field(None, description="Vector embeddings for the message")
-    embedding_dim: Optional[int] = Field(None, description="Dimension of the vector embeddings")
-    embedding_model: Optional[str] = Field(None, description="Model used to generate the embeddings")
-    embedding_etag: Optional[str] = Field(None, description="ETag for the embedding model version")
-    meta: Optional[Dict] = Field(None, description="Additional metadata for the message")
-
     def to_dialogue_turn(self) -> DialogueTurn:
         return DialogueTurn(role=self.role, content=self.character_message)
-    
-class ChatRAGConfig(BaseModel):
-    top_k_history: int = Field(5, description="Number of top historical messages to consider")
-    history_time_window_min: int = Field(60, description="Time window in minutes for considering historical messages")
-    measure: str = Field("cosine", description="Similarity measure to use for embeddings")
-    threshold: float = Field(0.75, description="Threshold for similarity to consider a message relevant")
-    meta: Optional[Dict] = Field(None, description="Additional metadata for the RAG configuration")
 
 class ModelConfig(BaseModel):
     model_name: str = Field("openai/gpt-oss-20b", description="Name of the language model to use")
@@ -56,21 +42,39 @@ class GenConfig(BaseModel):
     stop: Optional[List[str]] = Field(None, description="List of stop tokens for generation termination")
     reasoning_effort: Literal["low", "medium", "high"] = Field("low", description="Level of reasoning effort for generation")
 
+class CurrentStoryState(BaseModel):
+    node_id: str = Field(..., description="ID of the current story state node")
+    node_name: str = Field(..., description="Name of the current story state node")
+    description: str = Field(..., description="Description of the current story state")
+    loop_count: int = Field(0, description="Number of times the user has looped back to this state")
+    max_loop_before_branch: int = Field(3, description="Maximum loops allowed before forcing a story branch")
+
+class ChildStoryState(BaseModel):
+    node_id: str = Field(..., description="ID of the child story state node")
+    summary: str = Field(..., description="Summary of the child story state")
+    conditions: List[str] = Field(..., description="Conditions required to access this child story state")
+
+class Story(BaseModel):
+    current_story_state: CurrentStoryState = Field(..., description="Current state of the story")
+    child_story_states: List[ChildStoryState] = Field(..., description="List of possible child states from the current story state")
+
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User's input message for the chat")
     user_name: Optional[str] = Field("User", description="Name of the user")
     persona: Persona = Field(..., description="Persona to use for the chat")
     chat_history: Optional[List[Message]] = Field([], description="List of previous chat messages")
-    chat_rag_config: Optional[ChatRAGConfig] = Field(None, description="Configuration for chat retrieval-augmented generation")
     story_title: Optional[str] = Field(None, description="Title of the story context")
-    current_story_state: Optional[str] = Field(None, description="Current state or chapter of the story")
-    child_story_states: Optional[List[str]] = Field(None, description="List of child story states or chapters") 
+    story: Optional[Story] = Field(None, description="Story context including current and child states")
     model_cfg: Optional[ModelConfig] = Field(None, description="Configuration for the language model")
     gen: Optional[GenConfig] = Field(None, description="Generation configuration for the language model")
     meta: Optional[Dict] = Field(None, description="Additional metadata for the chat request")
 
 
 # ========== Schema Definitions for response ==========
+class Dialogue(BaseModel):
+    narrative: str = Field(..., description="Narrative text of the dialogue")
+    character_message: str = Field(..., description="Message from the character")
+
 class Usage(BaseModel):
     prompt_tokens: int = Field(..., description="Number of tokens in the prompt")
     completion_tokens: int = Field(..., description="Number of tokens in the completion")
@@ -91,14 +95,10 @@ class Timing(BaseModel):
     total_ms: Optional[int] = Field(None, description="Total time taken for the request in milliseconds")
 
 class ChatResponse(BaseModel):
-    narrative: str = Field(..., description="Generated narrative text from the chat")
-    character_message: str = Field(..., description="Generated message from the character")
+    dialogues:List[Dialogue] = Field(..., description="List of dialogues generated in response to the chat")
     image_prompt: str = Field(..., description="Prompt for image generation based on the chat")
-    next_state_description: Optional[List[UserSelection]] = Field(None, description="Next state or chapter ID for the story")
-    embedding: Optional[List[float]] = Field(None, description="Vector embeddings for the generated response")
-    usage: Optional[Usage] = Field(None, description="Token usage statistics for the request")
-    timing: Optional[Timing] = Field(None, description="Timing information for various stages of the request")
-
+    user_choices: Optional[List[UserSelection]] = Field(None, description="Next state or chapter ID for the story")
+    current_state: str = Field(..., description="Current state description after the chat")
 
 # ========== Schema Definitions for groq request ==========
 class GroqResponse(BaseModel):
