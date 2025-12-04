@@ -36,21 +36,13 @@ def handle_chat(payload: Dict) -> Iterator[str]:
     meta = payload.get("meta", {})
 
     chat_context = chat_history
-
-    current_story_state = story.get("current_story_state", {}).get("node_id") if story else None
-    child_story_states = []
-    if story and "child_story_states" in story:
-        for child in story["child_story_states"]:
-            child_story_states.append(child.get("node_id"))
-
     story_context = []
-    if story_title:
+    if story_title or story:
         # tmp_time = time.time()
         story_context = retrieve_story_context(
             story_title=story_title,
             user_query=message,
-            current_story_state=current_story_state,
-            child_story_states=child_story_states,
+            story=story
         )
         # timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
     print(f"\n[System] story_context: {story_context}")

@@ -22,36 +22,73 @@ def _load_story_context(node_id: str, docstore: Dict) -> str:
     except Exception as e:
         print(f"Error loading docstore: {e}")
 
-def retrieve_story_context(story_title: str, user_query: str,
-                           current_story_state: Optional[str] = None, child_story_states: Optional[List[str]] = None) -> List:
+def retrieve_story_context(story_title: str,
+                           user_query: str,
+                           story: Optional[Dict] = None) -> List:
     
     ret = {}
     ret["current_story"] = {}
     ret["child_stories"] = []
 
-    # Load docstore.json
-    path = f"{STORY_INDEX_BASE_DIR}/{story_title}/docstore.json"
-    if not os.path.exists(path):
-        print(f"Retrieval result file not found: {path}")
-        return ret
-    docstore = _load_json(path)
+    current_story_state = story.get("current_story_state", {}).get("node_id") if story else None
+    child_story_states = []
+    if story and "child_story_states" in story:
+        for child in story["child_story_states"]:
+            child_story_states.append(child.get("node_id"))
 
-    # Retrieve current story state
-    if current_story_state:
-        story = _load_story_context(current_story_state, docstore)
-        ret["current_story"] = {
-            "state_id": current_story_state,
-            "text": story
+    # Load docstore.json if story_title is provided
+    if story_title:
+        try:
+            path = f"{STORY_INDEX_BASE_DIR}/{story_title}/docstore.json"
+            if not os.path.exists(path):
+                print(f"[System] Docstore file not found: {path}")
+                raise FileNotFoundError(f"Docstore not found: {path}")
+            docstore = _load_json(path)
+
+            # Retrieve current story state
+            if current_story_state:
+                story_text = _load_story_context(current_story_state, docstore)
+                ret["current_story"] = {
+                    "state_id": current_story_state,
+                    "text": story_text
+                }
+
+            # Retrieve child story states
+            if child_story_states:
+                for state_id in child_story_states:
+                    story_text = _load_story_context(state_id, docstore)
+                    ret["child_stories"].append({
+                        "state_id": state_id,
+                        "text": story_text
+                    })    
+
+            return ret
+        except Exception as e:
+            print(f"[System] Error during docstore retrieval: {e}")
+            print(f"[System] Falling back to story data in request.")
+    
+    # Fallback: use story dict from request
+    if story:
+        print("[System] Using story data from request as fallback.")
+
+        if current_story_state:
+            ret["current_story"] = {
+                "state_id": current_story_state,
+                "text": story.get("current_story_state", {}).get("description", "")
+            }
+
+        if "child_story_states" in story:
+            for child in story["child_story_states"]:
+                ret["child_stories"].append({
+                    "state_id": child.get("node_id"),
+                    "text": child.get("summary", ""),
+                    "conditions": child.get("conditions", [])
+                })
+
+        ret["meta"] = {
+            "loop_count": story.get("current_story_state", {}).get("loop_count", 0),
+            "max_loop_before_branch": story.get("current_story_state", {}).get("max_loop_before_branch", 3)
         }
-
-    # Retrieve child story states
-    if child_story_states:
-        for state_id in child_story_states:
-            story = _load_story_context(state_id, docstore)
-            ret["child_stories"].append({
-                "state_id": state_id,
-                "text": story
-            })    
 
     return ret
 
