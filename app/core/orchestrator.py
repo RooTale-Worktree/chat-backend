@@ -1,80 +1,81 @@
-from __future__ import annotations
 import os
-import time
-import json
-from groq import Groq
 from dotenv import load_dotenv
-from typing import Dict, Iterator
+from typing import Dict, AsyncIterator
+from openai import AsyncOpenAI
 
 from app.core.prompt_builder import build_prompt
-from app.core.story_retriever import retrieve_story_context
-from app.schemas import GroqResponse
+from app.config import settings
+from app.schemas import ChatResponse, StreamWrapper, StreamEventType
+
 
 load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def handle_chat(payload: Dict) -> Iterator[str]:
-    """
-    Handle a single chat turn with streaming.    
-    Args:
-        payload: ChatRequest dict
-    Returns:
-        Iterator[str]: SSE formatted chunks
-    """
-    # timing = {} # Timing is less relevant in streaming
-    # start_time = time.time()
 
-    # Parse payload
-    message = payload.get("message", "")
-    user_name = payload.get("user_name", "User")
-    persona = payload.get("persona", None)
-    chat_history = payload.get("chat_history", [])
-    story_title = payload.get("story_title", None)
-    story = payload.get("story", None)
-    model_config = payload.get("model_cfg") or {}
-    gen = payload.get("gen") or {}
-    meta = payload.get("meta", {})
+async def handle_chat(payload: Dict) -> AsyncIterator[str]:
 
-    chat_context = chat_history
-    story_context = []
-    if story_title or story:
-        # tmp_time = time.time()
-        story_context = retrieve_story_context(
-            story_title=story_title,
-            user_query=message,
-            story=story
+    # build prompt based on payload
+    prompt = build_prompt(payload)
+    print("Generated Prompt:", prompt)
+
+    full_text_accumulator = ""
+
+    try:
+        stream = await client.chat.completions.create(
+            model=settings.model_name,
+            messages=prompt,
+            stream=True,
+            temperature=settings.temperature,
+            max_completion_tokens=settings.max_completion_tokens,
+            top_p=settings.top_p,
         )
-        # timing["story_retr_ms"] = int((time.time() - tmp_time) * 1000)
-    print(f"\n[System] story_context: {story_context}")
+
+        # Phase 1: delta streaming
+        async for chunk in stream:
+            content = chunk.choices[0].delta.content
+            
+            if content:
+                full_text_accumulator += content
+                
+                response_chunk = StreamWrapper(
+                    type=StreamEventType.DELTA,
+                    content=content
+                )
+                yield f"data: {response_chunk.model_dump_json()}\n\n"
+
+        # Phase 2: final response
+        final_metadata = _calculate_metadata(full_text_accumulator, payload)
+
+        final_response_chunk = StreamWrapper(
+            type=StreamEventType.FINAL,
+            data=final_metadata
+        )
+        yield f"data: {final_response_chunk.model_dump_json()}\n\n"
+
+    except Exception as e:
+        error_chunk = StreamWrapper(
+            type=StreamEventType.ERROR,
+            data=ChatResponse(
+                next_node_id="", text_output=[], image_prompt="", next_choice_description=[],
+                error=str(e)
+            )
+        )
+        yield f"data: {error_chunk.model_dump_json()}\n\n"
+
+    # 스트림 종료 신호
+    yield "data: [DONE]\n\n"
+
+
+def _calculate_metadata(full_text: str, payload: Dict) -> ChatResponse:
+    """
+    완성된 텍스트를 바탕으로 나머지 필드(next_node_id, image_prompt 등)를 결정하는 로직
+    """
+    # TODO: 여기에 실제 비즈니스 로직을 구현하세요.
+    # 예: 룰베이스로 다음 노드를 찾거나, 텍스트 분석을 위해 LLM을 한 번 더 호출하거나 등등.
     
-    prompt_input = {
-        "persona": persona,
-        "user_name": user_name,
-        "chat_context": chat_context,
-        "story_context": story_context,
-        "user_message": message,
-        "reasoning_effort": gen.get("reasoning_effort", "low"),
-    }
-    prompt = build_prompt(prompt_input)
-    print(f"\n[System] prompt: {prompt}\n")
-
-    # API Call
-    client = Groq()
-    stream = client.chat.completions.create(
-        model=model_config.get("model_name", "openai/gpt-oss-20b"),
-        messages=prompt,
-        # response_format={"type": "json_object"}, # Disable strict JSON mode for true streaming
-        # reasoning_effort=gen.get("reasoning_effort", "low"),
-        temperature=gen.get("temperature", 0.5),
-        top_p=gen.get("top_p", 0.9),
-        max_completion_tokens=gen.get("max_new_tokens", 1024),
-        frequency_penalty=gen.get("frequency_penalty", 0),
-        stream=True
+    return ChatResponse(
+        next_node_id="calculated_next_node_123",  # 로직 결과
+        text_output=[{"role": "assistant", "content": full_text}],
+        image_prompt=f"A fantasy scene description based on: {full_text[:30]}...",
+        next_choice_description=["Go North", "Stay here"]
     )
-
-    for chunk in stream:
-        content = chunk.choices[0].delta.content
-        if content:
-            # Yield raw content delta for true streaming effect
-            # Client must handle partial JSON parsing if needed
-            yield f"data: {content}\n\n"
