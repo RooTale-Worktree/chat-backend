@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from app.schemas import ChatRequest, ChatResponse
+from app.schemas import ChatRequest
 from app.core.orchestrator import handle_chat
 
 
