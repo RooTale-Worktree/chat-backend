@@ -1,5 +1,36 @@
 from typing import List, Dict, Any
 
+def _get_loop_instruction(loop_count: int, max_loop: int = 5) -> str:
+
+    # 1. Exploration(loop_count : 0~1)
+    if loop_count <= 1:
+        return """
+### PHASE_INSTRUCTION: EXPLORATION (Level 1)
+- **Current Status**: The user has just arrived. **Do NOT rush to the next node.**
+- **Goal**: Deepen the immersion. Focus on sensory details, atmosphere, and character interplay.
+- **Transition**: Unless the user's action perfectly matches a candidate condition, keep `next_node_id` as the current node.
+- **Guidance**: The `next_choice_description` should suggest looking around or talking, rather than making major decisions.
+"""
+    
+    # 2. Build-up(loop_count : 2~4 )
+    elif loop_count < max_loop:
+        return """
+### PHASE_INSTRUCTION: TENSION BUILDING (Level 2)
+- **Current Status**: The story needs to move forward. **Start hinting at the candidate conditions.**
+- **Goal**: Subtly guide the user towards the available branches (Candidates).
+- **Transition**: Check conditions more leniently. If the user shows intent similar to a candidate, allow the transition.
+- **Guidance**: The `next_choice_description` should encourage the user to make a choice or take action.
+"""
+
+    # 3. Forced(loop_count : 5)
+    else:
+        return """
+### PHASE_INSTRUCTION: DECISIVE CONCLUSION (Final)
+- **Current Status**: Conclude this scene decisively and move forward.
+- **Goal**: Force a transition to the most logical next node among the candidates.
+- **Transition**: **Mandatory.** Select the best-fitting candidate ID for `next_node_id`. Do NOT output the current node ID.
+- **Guidance**: Create an external event or realization that forces the protagonist to move.
+"""
 
 
 def _build_system_prompt(
@@ -41,11 +72,14 @@ Generate strictly defined JSON output based on the provided schema.
 **Location/Atmosphere**: {scene_desc}
 **Active Characters**: {characters_str}
 
+{phase_instruction}
+
 ### TRANSITION_LOGIC (Scenario Progression)
 You must decide the flow of the story based on the user's last input and the current context.
 1. **Analyze**: Does the conversation/action meet any condition for the following candidates?
 {candidates_str}
 2. **Decision**: 
+    - Follow the **PHASE_INSTRUCTION** strictness level.
    - If a condition is met, set `next_node_id` to that Candidate ID.
    - If NO condition is met, keep `next_node_id` as "{current_node_id}" (stay in current scene).
 3. **Future Choices**: Based on your decision (stay or move), provide 2~4 natural choices for the user's NEXT action.
