@@ -1,11 +1,12 @@
 import os
-from dotenv import load_dotenv
+import json
 from typing import Dict, AsyncIterator
 from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
 from app.core.prompt_builder import build_prompt
 from app.config import settings
-from app.schemas import ChatResponse, StreamWrapper, StreamEventType
+from app.schemas import ChatResponse
 
 
 load_dotenv()
@@ -14,68 +15,64 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def handle_chat(payload: Dict) -> AsyncIterator[str]:
 
+    is_test = payload.get("is_test", False)
     # build prompt based on payload
     prompt = build_prompt(payload)
     print("Generated Prompt:", prompt)
 
-    full_text_accumulator = ""
-
     try:
-        stream = await client.chat.completions.create(
-            model=settings.model_name,
-            messages=prompt,
-            stream=True,
-            temperature=settings.temperature,
-            max_completion_tokens=settings.max_completion_tokens,
-            top_p=settings.top_p,
-        )
+        # Pydantic 모델을 사용해 JSON Schema 정의
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "chat_response",
+                "schema": ChatResponse.model_json_schema(),
+                "strict": False
+            }
+        }
 
-        # Phase 1: delta streaming
-        async for chunk in stream:
-            content = chunk.choices[0].delta.content
+        if is_test:
+            # TEST 모드: 전체 응답을 한 번에 생성 (성능 테스트 등 목적)
+            completion = await client.chat.completions.create(
+                model=settings.model_name,
+                messages=prompt,
+                response_format=response_format,
+                temperature=settings.temperature,
+                max_completion_tokens=settings.max_completion_tokens,
+                top_p=settings.top_p,
+                stream=False
+            )
             
-            if content:
-                full_text_accumulator += content
-                
-                response_chunk = StreamWrapper(
-                    type=StreamEventType.DELTA,
-                    content=content
-                )
-                yield f"data: {response_chunk.model_dump_json()}\n\n"
+            if completion.choices and completion.choices[0].message.content:
+                content = completion.choices[0].message.content
+                # 전체 내용을 한 번에 전송 (클라이언트 호환성을 위해 포맷 유지)
+                yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
 
-        # Phase 2: final response
-        final_metadata = _calculate_metadata(full_text_accumulator, payload)
+        else:
+            # 기본 모드: 스트리밍 전송
+            stream = await client.chat.completions.create(
+                model=settings.model_name,
+                messages=prompt,
+                response_format=response_format,
+                temperature=settings.temperature,
+                max_completion_tokens=settings.max_completion_tokens,
+                top_p=settings.top_p,
+                stream=True
+            )
 
-        final_response_chunk = StreamWrapper(
-            type=StreamEventType.FINAL,
-            data=final_metadata
-        )
-        yield f"data: {final_response_chunk.model_dump_json()}\n\n"
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    # Raw JSON String 조각을 JSON 문자열로 래핑하여 SSE 데이터로 전송
+                    # 클라이언트는 event.data를 JSON.parse() 하여 문자열 조각을 얻고 이를 누적해야 함
+                    yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
+
+        # 스트림 종료 신호
+        yield "data: [DONE]\n\n"
 
     except Exception as e:
-        error_chunk = StreamWrapper(
-            type=StreamEventType.ERROR,
-            data=ChatResponse(
-                next_node_id="", text_output=[], image_prompt="", next_choice_description=[],
-                error=str(e)
-            )
-        )
-        yield f"data: {error_chunk.model_dump_json()}\n\n"
+        print(f"Streaming Error: {str(e)}")
+        # 에러 발생 시 JSON 형태로 에러 정보 전송
+        error_payload = json.dumps({"error": str(e)}, ensure_ascii=False)
 
-    # 스트림 종료 신호
-    yield "data: [DONE]\n\n"
-
-
-def _calculate_metadata(full_text: str, payload: Dict) -> ChatResponse:
-    """
-    완성된 텍스트를 바탕으로 나머지 필드(next_node_id, image_prompt 등)를 결정하는 로직
-    """
-    # TODO: 여기에 실제 비즈니스 로직을 구현하세요.
-    # 예: 룰베이스로 다음 노드를 찾거나, 텍스트 분석을 위해 LLM을 한 번 더 호출하거나 등등.
-    
-    return ChatResponse(
-        next_node_id="calculated_next_node_123",  # 로직 결과
-        text_output=[{"role": "assistant", "content": full_text}],
-        image_prompt=f"A fantasy scene description based on: {full_text[:30]}...",
-        next_choice_description=["Go North", "Stay here"]
-    )
+        yield f"data: {error_payload}\n\n"

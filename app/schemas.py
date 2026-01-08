@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     universe: UniverseItem = Field(..., description="현재 universe의 주인공과 배경 정보")
     scene: SceneItem = Field(..., description="현재 scene 노드의 세부 정보")
     candidates: List[CandidateItem] = Field([], description="현재 scene 노드의 자식 노드 목록")
+    is_test: bool = Field(False, description="개발 과정에서 테스트용 플래그")
 
 class ChatItem(BaseModel):
     role: Literal["user", "assistant"] = Field(..., description="대화 생성 주체")
@@ -36,18 +37,8 @@ class CandidateItem(BaseModel):
 
 # ========================= 응답 스키마 =========================
 class ChatResponse(BaseModel):
-    next_node_id: str = Field(..., description="다음에 전환될 scene 노드의 ID (self-loop 또는 후보 노드 ID)")
-    text_output: List[ChatItem] = Field(..., description="생성된 대화 출력 항목 목록")
-    image_prompt: str = Field(..., description="현재 대화에 대한 이미지를 생성하기 위한 프롬프트")
-    next_choice_description: List[str] = Field(..., description="사용자가 선택할 수 있는 다음 선택지 목록")
-    error: Optional[str] = Field(None, description="오류 발생 시 오류 메시지")
-
-class StreamEventType(str, Enum):
-    DELTA = "delta"
-    FINAL = "final"
-    ERROR = "error"
-
-class StreamWrapper(BaseModel):
-    type: StreamEventType = Field(..., description="이벤트 유형")
-    content: Optional[str] = Field(None, description="streaming 처리 중인 경우")
-    data: Optional[ChatResponse] = Field(None, description="최종 응답 데이터 (type이 final인 경우)")
+    text_output: List[ChatItem] = Field(None, description="생성된 대화 출력 항목 목록") 
+    next_node_id: str = Field(..., description="다음에 전환될 scene 노드의 ID")
+    image_prompt: str = Field(..., description="이미지 생성 프롬프트")
+    next_choice_description: List[str] = Field(..., description="다음 선택지 목록")
+    error: Optional[str] = Field(None, description="오류 메시지")

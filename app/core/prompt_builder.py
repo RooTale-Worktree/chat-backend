@@ -1,7 +1,6 @@
 from typing import List, Dict, Any
 
 
-
 def _build_system_prompt(
     loop_count: int,
     universe: Dict[str, Any],
