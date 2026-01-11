@@ -1,22 +1,22 @@
 from typing import List, Dict, Any
 
-def _return_transition_logic(loop_count: int) -> str:
+def _return_transition_logic(loop_count: int, current_node_id: str, candidates_str: str) -> str:
     if loop_count < 2:
-        return """
+        return f"""
 • Status: The scene is just beginning.
 • Action: STRICTLY STAY in the current node.
 • Output: Set `next_node_id` to "{current_node_id}".
 • Goal: Do not transition yet. Focus on building narrative depth and interacting with the current scene.
 """
     elif loop_count < 5:
-        return """
+        return f"""
 • Status: The scene is mature. Transition is optional.
 • Action: Analyze the user's input against the Candidate Conditions below.
 • Candidates: {candidates_str}
   - IF the input matches a specific candidate's condition -> MOVE (Set `next_node_id` to that Candidate ID).
   - IF the input does NOT match any condition -> STAY (Set `next_node_id` to "{current_node_id}")."""
     else:
-        return """
+        return f"""
 • Status: The scene has dragged on too long. Forced transition required.
 • Action: Analyze the candidates and their conditions and MUST MOVE.
 • Candidates: {candidates_str}
@@ -44,7 +44,8 @@ def _build_system_prompt(
         candidates_str += f"- Candidate {idx+1} (ID: {cand['candidate_id']}): {cand['condition']}\n"
 
     characters_str = ", ".join(characters) if characters else "None"
-    transition_logic = _return_transition_logic(loop_count).format(
+    transition_logic = _return_transition_logic(
+        loop_count=loop_count,
         current_node_id=current_node_id,
         candidates_str=candidates_str
     )
