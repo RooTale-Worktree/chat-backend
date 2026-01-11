@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 
+
 def _return_transition_logic(loop_count: int, current_node_id: str, candidates_str: str) -> str:
     if loop_count < 2:
         return f"""

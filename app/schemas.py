@@ -34,10 +34,45 @@ class CandidateItem(BaseModel):
     condition: str = Field(..., description="해당 후보 노드로 전환되기 위한 조건 설명")
 
 
-# ========================= 응답 스키마 =========================
-class ChatResponse(BaseModel):
-    text_output: List[ChatItem] = Field(None, description="생성된 대화 출력 항목 목록") 
-    next_node_id: str = Field(..., description="다음에 전환될 scene 노드의 ID")
-    image_prompt: str = Field(..., description="이미지 생성 프롬프트")
-    next_choice_description: List[str] = Field(..., description="다음 선택지 목록")
-    error: Optional[str] = Field(None, description="오류 메시지")
+# ========================= LLM 응답 스키마 =========================
+class LLMResponse(BaseModel):
+    text_output: List[TextOutputItem] = Field(..., description=(
+        "A sequence of 8~12 items ",
+        "mixing narrative and character_message." 
+        "This sequence must logically bridge the user's input to the consequence,", 
+        "effectively advancing the plot within the current scene context."
+    ))
+    next_node_id: str = Field(..., description=(
+        "The CRITICAL decision for story progression.",
+        "Analyze the 'Transition Logic' in the prompt.", 
+        "If the user's input/action meets a specific Candidate condition,", 
+        "this MUST be that Candidate's ID.", 
+        "If no condition is met, return the current node ID."
+    ))
+    image_prompt: str = Field(..., description=(
+        "A detailed description of the final visual scene in ENGLISH.", 
+        "Focus on visual elements: lighting, camera angle, character appearance, background texture, and mood.", 
+        "Do not include dialogue or abstract concepts."
+
+    ))
+    next_choice_description: List[str] = Field(..., description=(
+        "A list of 2~4 short, actionable choices for the user's next turn.", ""
+        "These choices should be natural continuations of the current situation and may hint at future branching paths."
+    ))
+
+class TextOutputItem(BaseModel):
+    type: Literal["narrative", "character_message"] = Field(..., description=(
+        "Strictly classifies the content.", ""
+        "Use 'narrative' for scene descriptions, actions, and atmosphere.",
+        "Use 'character_message' ONLY for spoken dialogue by characters."
+    ))
+    speaker: Optional[str] = Field(None, description=(
+        "The exact name of the character speaking.", ""
+        "MUST be provided if type is 'character_message'. MUST be None (null) if type is 'narrative'.", ""
+        "The name must match one of the 'Active Characters' in the context."
+    ))
+    text: str = Field(..., description=(
+        "The actual content text.", ""
+        "If type is 'narrative', describe the scene objectively or sensory details.", ""
+        "If type is 'character_message', write only the spoken lines without quotes or internal thoughts."
+    ))
