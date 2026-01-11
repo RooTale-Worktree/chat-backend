@@ -1,14 +1,15 @@
 # Character Chat Generation API
 
-캐릭터 기반 대화 생성 및 인터랙티브 스토리 진행을 위한 FastAPI 기반 백엔드 서버입니다.
+캐릭터/스토리 기반 대화 생성과 장면 진행을 위한 FastAPI 백엔드 서버입니다. 요청된 세계관(universe), 현재 장면(scene), 후보 분기(candidates)를 바탕으로 구조화된 JSON 응답을 생성하며, 기본적으로 SSE 스트리밍으로 전송합니다.
 
 ## 기능
 
-- 캐릭터 페르소나 기반 대화 생성
-- 인터랙티브 스토리 분기 및 진행
-- 대화 히스토리 관리
-- 이미지 생성 프롬프트 자동 생성
-- Groq API를 통한 LLM 추론
+- Universe/Scene/Candidate 기반 스토리 대화 생성
+- JSON Schema 기반 구조화된 출력 (narrative / character_message 분리)
+- SSE(text/event-stream) 스트리밍 응답
+- 이미지 생성 프롬프트 생성
+- OpenAI API(AsyncOpenAI) 연동
+- loop_count 기반 장면 전환 로직
 
 ## 로컬 테스트 실행 방법
 
@@ -26,7 +27,13 @@ pip install -r requirements.txt
 프로젝트 루트에 `.env` 파일을 생성하고 다음 내용을 추가하세요:
 
 ```env
-GROQ_API_KEY=your_groq_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+
+# 선택: 기본값을 덮어쓰고 싶을 때만 설정
+MODEL_NAME=gpt-5.1-chat-latest
+TEMPERATURE=1.0
+MAX_COMPLETION_TOKENS=4096
+TOP_P=1.0
 ```
 
 ### 3. 서버 실행
@@ -58,250 +65,106 @@ docker run -p 8000:8000 --env-file .env chat-backend
 
 ### POST `/v1/chat`
 
-캐릭터와의 대화를 생성하고 스토리를 진행하는 엔드포인트입니다.
+세계관/씬/후보 정보를 기반으로 다음 장면을 생성합니다. 기본 응답은 SSE 스트리밍(`text/event-stream`)입니다.
 
 #### Request Body
 
 ```json
 {
-  "message": "string (필수)",
-  "user_name": "string (선택, 기본값: User)",
-  "persona": {
-    "character_name": "string (필수)",
-    "persona": "string (필수)",
-    "scenario": "string (필수)",
-    "speaking_style": ["string"] (필수),
-    "example_dialogue": [
-      {
-        "role": "string (필수)",
-        "content": "string (필수)"
-      }
-    ] (필수),
-    "meta": {} (선택)
-  },
+  "user_message": "string (필수)",
+  "loop_count": 0,
   "chat_history": [
     {
-      "narrative": "string (선택)",
-      "character_message": "string (필수)",
-      "role": "string (필수)",
-      "embedding": [float] (선택),
-      "embedding_dim": int (선택),
-      "embedding_model": "string (선택)",
-      "embedding_etag": "string (선택)",
-      "meta": {} (선택)
+      "role": "user | assistant",
+      "type": "narrative | character_message",
+      "text": "string",
+      "speaker": "string | null"
     }
-  ] (선택, 기본값: []),
-  "chat_rag_config": {
-    "top_k_history": int (선택, 기본값: 5),
-    "history_time_window_min": int (선택, 기본값: 60),
-    "measure": "string (선택, 기본값: cosine)",
-    "threshold": float (선택, 기본값: 0.75),
-    "meta": {} (선택)
-  } (선택),
-  "story_title": "string (선택)",
-  "current_story_state": "string (선택)",
-  "child_story_states": ["string"] (선택),
-  "model_cfg": {
-    "model_name": "string (선택, 기본값: openai/gpt-oss-20b)",
-    "tensor_parallel_size": int (선택, 기본값: 1),
-    "gpu_memory_utilization": float (선택, 기본값: 0.9),
-    "max_model_length": int (선택, 기본값: 131072),
-    "max_num_seqs": int (선택, 기본값: 8),
-    "trust_remote_code": bool (선택, 기본값: true),
-    "dtype": "string (선택, 기본값: auto)"
-  } (선택),
-  "gen": {
-    "temperature": float (선택, 기본값: 0.5),
-    "top_p": float (선택, 기본값: 0.9),
-    "max_new_tokens": int (선택, 기본값: 256),
-    "repetition_penalty": float (선택, 기본값: 1.05),
-    "frequency_penalty": float (선택, 기본값: 0.0),
-    "stop": ["string"] (선택),
-    "reasoning_effort": "low | medium | high (선택, 기본값: medium)"
-  } (선택),
-  "meta": {} (선택)
+  ],
+  "universe": {
+    "protagonist": "string (필수)",
+    "protagonist_desc": "string (필수)",
+    "setting": "string (필수)"
+  },
+  "scene": {
+    "node_id": "string (필수)",
+    "characters": ["string"] (필수),
+    "description": "string (필수)"
+  },
+  "candidates": [
+    {
+      "candidate_id": "string (필수)",
+      "condition": "string (필수)"
+    }
+  ],
+  "is_test": false
 }
 ```
 
 #### Request 필드 설명
 
 **기본 필드**
-- `message`: 사용자의 입력 메시지
-- `user_name`: 사용자 이름
+- `user_message`: 사용자 입력 메시지
+- `loop_count`: 현재 scene에서 머문 횟수 (전환 로직에 사용)
+- `is_test`: `true`일 때 스트리밍 대신 단일 응답으로 전송 (SSE 포맷은 유지)
 
-**persona** (캐릭터 설정)
-- `character_name`: 캐릭터의 이름
-- `persona`: 캐릭터의 성격과 배경 설명
-- `scenario`: 현재 시나리오 또는 상황 설명
-- `speaking_style`: 캐릭터의 말투 특징 리스트
-- `example_dialogue`: 캐릭터의 대화 예시 (few-shot learning용)
-  - `role`: 화자 역할 (`"user"` 또는 `"assistant"`)
-  - `content`: 대화 내용
-- `meta`: 추가 메타데이터
+**chat_history**
+- `role`: `"user"` 또는 `"assistant"`
+- `type`: `"narrative"` 또는 `"character_message"`
+- `text`: 대화 내용
+- `speaker`: `character_message`일 때만 캐릭터 이름을 지정 (narrative는 `null`)
 
-**chat_history** (대화 히스토리)
-- `narrative`: 서사 텍스트 (3인칭 시점 묘사)
-- `character_message`: 캐릭터의 메시지
-- `role`: 메시지 발신자 역할 (`"user"` 또는 `"assistant"`)
-- `embedding`: 메시지의 벡터 임베딩
-- `embedding_dim`: 임베딩 차원
-- `embedding_model`: 임베딩 생성에 사용된 모델
-- `embedding_etag`: 임베딩 모델 버전 태그
-- `meta`: 추가 메타데이터
+**universe**
+- `protagonist`: 주인공 이름
+- `protagonist_desc`: 주인공 설명
+- `setting`: 세계관/배경 설정
 
-**chat_rag_config** (RAG 설정)
-- `top_k_history`: 검색할 과거 메시지 개수
-- `history_time_window_min`: 고려할 과거 메시지 시간 범위 (분)
-- `measure`: 유사도 측정 방법 (기본: cosine)
-- `threshold`: 관련 메시지로 판단할 유사도 임계값
+**scene**
+- `node_id`: 현재 scene 노드 ID
+- `characters`: 현재 scene에 등장하는 캐릭터 목록
+- `description`: scene 설명
 
-**스토리 관련 필드**
-- `story_title`: 스토리 제목 (스토리 컨텍스트 검색용)
-- `current_story_state`: 현재 스토리 상태/노드 ID
-- `child_story_states`: 가능한 다음 스토리 상태 ID 리스트
+**candidates**
+- `candidate_id`: 다음 후보 노드 ID
+- `condition`: 해당 노드로 전환되는 조건 설명
 
-**model_cfg** (모델 설정)
-- `model_name`: 사용할 LLM 모델명
-- `tensor_parallel_size`: 텐서 병렬 처리 크기
-- `gpu_memory_utilization`: GPU 메모리 사용률
-- `max_model_length`: 최대 모델 입력 길이
-- `max_num_seqs`: 병렬 처리할 최대 시퀀스 수
-- `trust_remote_code`: 원격 코드 실행 신뢰 여부
-- `dtype`: 모델 가중치 데이터 타입
+#### Response (SSE 스트리밍)
 
-**gen** (생성 설정)
-- `temperature`: 샘플링 온도 (높을수록 창의적, 낮을수록 결정적)
-- `top_p`: Nucleus 샘플링 파라미터
-- `max_new_tokens`: 생성할 최대 토큰 수
-- `repetition_penalty`: 반복 억제 페널티
-- `frequency_penalty`: 빈도 기반 페널티
-- `stop`: 생성 중단 토큰 리스트
-- `reasoning_effort`: 추론 수준 (`"low"`, `"medium"`, `"high"`)
+- `Content-Type: text/event-stream`
+- 각 `data:` 이벤트는 **JSON 문자열 조각**입니다.
+- 모든 조각을 이어 붙인 뒤 JSON으로 파싱하면 최종 응답 객체를 얻습니다.
+- 스트림 종료 시 `data: [DONE]` 이벤트가 전송됩니다.
 
-#### Response Body
+**최종 응답 JSON 구조**
 
 ```json
 {
-  "narrative": "string (필수)",
-  "character_message": "string (필수)",
-  "image_prompt": "string (필수)",
-  "next_state_description": [
+  "text_output": [
     {
-      "next_state_id": "string (필수)",
-      "choice_description": "string (필수)"
+      "role": "assistant",
+      "type": "narrative",
+      "text": "string",
+      "speaker": null
+    },
+    {
+      "role": "assistant",
+      "type": "character_message",
+      "text": "string",
+      "speaker": "string"
     }
-  ] (선택),
-  "embedding": [float] (선택),
-  "usage": {
-    "prompt_tokens": int (필수),
-    "completion_tokens": int (필수),
-    "total_tokens": int (필수),
-    "finish_reason": "string (필수)"
-  } (선택),
-  "timing": {
-    "message_embed_ms": int (선택),
-    "chat_retr_ms": int (선택),
-    "story_retr_ms": int (선택),
-    "llm_load_ms": int (선택),
-    "generate_ms": int (선택),
-    "response_embed_ms": int (선택),
-    "total_ms": int (선택)
-  } (선택)
+  ],
+  "next_node_id": "string",
+  "image_prompt": "string",
+  "next_choice_description": ["string"]
 }
 ```
-
-#### Response 필드 설명
-
-**생성 결과**
-- `narrative`: 생성된 서사 텍스트 (3인칭 시점 묘사, 장면과 행동에 집중)
-- `character_message`: 캐릭터의 대사 (캐릭터의 말투 스타일 반영)
-- `image_prompt`: 현재 장면을 묘사하는 이미지 생성 프롬프트 (영어)
-
-**스토리 분기**
-- `next_state_description`: 다음 가능한 스토리 분기 리스트
-  - `next_state_id`: 스토리 분기의 노드 ID
-  - `choice_description`: 해당 분기에 대한 간단한 설명 (예: "그에게 이유를 묻는다", "검을 뽑는다")
-
-**메타데이터**
-- `embedding`: 응답의 벡터 임베딩 (향후 RAG 검색용)
-- `usage`: 토큰 사용량 통계
-  - `prompt_tokens`: 프롬프트에 사용된 토큰 수
-  - `completion_tokens`: 생성된 토큰 수
-  - `total_tokens`: 총 토큰 수
-  - `finish_reason`: 생성 종료 이유
-- `timing`: 각 단계별 처리 시간 (밀리초)
-  - `message_embed_ms`: 메시지 임베딩 생성 시간
-  - `chat_retr_ms`: 대화 히스토리 검색 시간
-  - `story_retr_ms`: 스토리 컨텍스트 검색 시간
-  - `llm_load_ms`: LLM 모델 로딩 시간
-  - `generate_ms`: 텍스트 생성 시간
-  - `response_embed_ms`: 응답 임베딩 생성 시간
-  - `total_ms`: 전체 처리 시간
 
 #### 예시 요청
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat" \
+curl -N -X POST "http://localhost:8000/v1/chat" \
   -H "Content-Type: application/json" \
-  -d '{
-    "message": "안녕하세요?",
-    "user_name": "사용자",
-    "persona": {
-      "character_name": "엘리제",
-      "persona": "냉정하고 이성적인 마법사. 과거의 상처로 인해 타인과 거리를 두지만, 내면에는 따뜻한 마음을 지니고 있다.",
-      "scenario": "심해 도시에서 위험한 음모를 조사 중이다.",
-      "speaking_style": [
-        "간결하고 명료한 말투",
-        "감정을 드러내지 않는 차분한 어조",
-        "필요한 말만 하는 경향"
-      ],
-      "example_dialogue": [
-        {
-          "role": "user",
-          "content": "같이 가도 될까요?"
-        },
-        {
-          "role": "assistant",
-          "content": "...좋아. 하지만 방해는 하지 마."
-        }
-      ]
-    },
-    "gen": {
-      "temperature": 0.7,
-      "max_new_tokens": 300,
-      "reasoning_effort": "medium"
-    }
-  }'
-```
-
-#### 예시 응답
-
-```json
-{
-  "narrative": "엘리제는 차갑게 빛나는 푸른 눈으로 당신을 바라보았다. 그녀의 표정은 여전히 무표정했지만, 잠시 망설이는 듯한 기색이 스쳤다.",
-  "character_message": "...누구지? 이곳에 함부로 들어올 수 있는 사람은 없는데.",
-  "image_prompt": "A mysterious female mage with cold blue eyes and silver hair, standing in a dimly lit underwater city, magical blue light illuminating her face",
-  "next_state_description": [
-    {
-      "next_state_id": "node_123_1",
-      "choice_description": "자신을 소개하고 협력을 제안한다"
-    },
-    {
-      "next_state_id": "node_123_2",
-      "choice_description": "조심스럽게 물러난다"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 450,
-    "completion_tokens": 120,
-    "total_tokens": 570,
-    "finish_reason": "stop"
-  },
-  "timing": {
-    "generate_ms": 1250,
-    "total_ms": 1320
-  }
-}
+  -d @test/example.json
 ```
 
 ## 프로젝트 구조
@@ -309,36 +172,24 @@ curl -X POST "http://localhost:8000/v1/chat" \
 ```
 backend/
 ├── app/
-│   ├── __init__.py
 │   ├── main.py                  # FastAPI 앱 진입점
+│   ├── config.py                # 환경 설정 (모델/샘플링)
 │   ├── schemas.py               # Pydantic 모델 정의
 │   ├── core/
-│   │   ├── __init__.py
-│   │   ├── orchestrator.py      # 메인 로직 조율
-│   │   ├── prompt_builder.py    # 프롬프트 생성
-│   │   └── story_retriever.py   # 스토리 컨텍스트 검색
+│   │   ├── orchestrator.py      # LLM 호출 및 SSE 스트리밍
+│   │   └── prompt_builder.py    # 프롬프트 생성
 │   ├── routers/
-│   │   ├── __init__.py
-│   │   └── chat.py              # 채팅 엔드포인트
+│   │   ├── chat.py              # 채팅 엔드포인트
+│   │   └── story.py             # (현재 placeholder)
 │   └── story_indexes/           # 스토리 인덱스 파일들
-│       └── downwater/           # 예: 심해의 공명 도시
-│           ├── docstore.json
-│           ├── index_store.json
-│           └── story_info.json
+│       ├── downwater/
+│       ├── sonoris/
+│       └── verdia/
+├── test/
+│   ├── example.json             # 요청 예시
+│   └── risu_prompt.json         # 프롬프트 샘플
 ├── requirements.txt
 ├── Dockerfile
+├── vercel.json
 └── Readme.md
 ```
-
-## 기술 스택
-
-- **FastAPI**: 고성능 웹 프레임워크
-- **Pydantic**: 데이터 검증 및 직렬화
-- **Groq API**: LLM 추론 및 구조화된 출력
-- **LlamaIndex**: 스토리 인덱스 관리 (선택사항)
-- **Sentence Transformers**: 한국어 텍스트 임베딩 (선택사항, ko-sbert-nli)
-- **PyTorch**: 딥러닝 프레임워크 (임베딩 모델용)
-
-## 라이선스
-
-MIT License
