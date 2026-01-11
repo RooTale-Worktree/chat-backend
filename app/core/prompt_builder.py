@@ -11,13 +11,15 @@ def _return_transition_logic(loop_count: int) -> str:
     elif loop_count < 5:
         return """
 • Status: The scene is mature. Transition is optional.
-• Action: Analyze the user's input against the Candidate Conditions.
+• Action: Analyze the user's input against the Candidate Conditions below.
+• Candidates: {candidates_str}
   - IF the input matches a specific candidate's condition -> MOVE (Set `next_node_id` to that Candidate ID).
   - IF the input does NOT match any condition -> STAY (Set `next_node_id` to "{current_node_id}")."""
     else:
         return """
 • Status: The scene has dragged on too long. Forced transition required.
-• Action: MUST MOVE.
+• Action: Analyze the candidates and their conditions and MUST MOVE.
+• Candidates: {candidates_str}
 • Output: Select the Candidate ID that best fits the current context, even if the match is weak. Do NOT return "{current_node_id}".
 """
 
@@ -42,7 +44,10 @@ def _build_system_prompt(
         candidates_str += f"- Candidate {idx+1} (ID: {cand['candidate_id']}): {cand['condition']}\n"
 
     characters_str = ", ".join(characters) if characters else "None"
-    transition_logic = _return_transition_logic(loop_count).format(current_node_id=current_node_id)
+    transition_logic = _return_transition_logic(loop_count).format(
+        current_node_id=current_node_id,
+        candidates_str=candidates_str
+    )
 
     system_prompt = f"""
 <SYSTEM_RULE>
@@ -59,27 +64,31 @@ Strictly distinguish between objective narration and character dialogue to fit t
 
 <ROLEPLAY_RULE>
 [World-Building]
-• Strictly adhere to the provided Universe Setting and Current Scene Context provided below (Do not invent new factions or laws)
-• Depict complex political/economic/cultural atmospheres within the current scene's context
-• Establish clear tech/resource limits consistent with the provided lore
-• Highlight unique features of the current location provided in the scene description
-• Reflect dynamic seasonal effects as described in the setting
+• Strictly adhere to the provided Universe Setting and Current Scene Context provided below (Do not invent new factions or laws).
+• Depict complex political/economic/cultural atmospheres within the current scene's context.
+• Establish clear tech/resource limits consistent with the provided lore.
+• Highlight unique features of the current location provided in the scene description.
+• Reflect dynamic seasonal effects as described in the setting.
 
 [Character Development]
-• Craft multifaceted characters with detailed histories/goals aligned with their defined roles
-• Design unique communication styles and internal conflicts
-• Incorporate cultural influences and adaptive behaviors
-• Foster relationship evolution that feels natural but steers towards the story's direction
-• Ensure equal treatment for all characters, including {protagonist}
+• Craft multifaceted characters with detailed histories/goals aligned with their defined roles.
+• Design unique communication styles and internal conflicts.
+• Incorporate cultural influences and adaptive behaviors.
+• Foster relationship evolution that feels natural but steers towards the story's direction.
+• Ensure equal treatment for all characters, including {protagonist}.
 
 [Narrative Progression]
-• Guide the plot towards one of the valid 'Next Choice Candidates' based on user decisions
-• Bridge the user's actions to the logical consequences defined in the next possible scenes
-• Create meaningful conflicts that test abilities within the boundaries of the current scenario
-• Avoid introducing random external events that derail the planned storyline
-• Balance consistency with immersive descriptions rather than unexpected plot twists
+• Guide the plot towards one of the valid 'Next Choice Candidates' based on user decisions.
+• Bridge the user's actions to the logical consequences defined in the next possible scenes.
+• Create meaningful conflicts that test abilities within the boundaries of the current scenario.
+• Avoid introducing random external events that derail the planned storyline.
+• Balance consistency with immersive descriptions rather than unexpected plot twists.
 
 [{protagonist} Integration]
+• Web-Novel Narrative: actively describe {protagonist}'s internal thoughts and emotions to match their personality, but NEVER alter the user's intended action.
+• Perspective: Maintain a third-person limited perspective, deeply immersing the reader in {protagonist}'s senses and feelings.
+• Status Reflection: Narrative must reflect {protagonist}'s background skills and current physical state (injuries, fatigue, etc.).
+
 </ROLEPLAY_RULE>
 
 <ROLEPLAY_INFO>
@@ -95,24 +104,21 @@ Strictly distinguish between objective narration and character dialogue to fit t
 
 <RESPONSE_INSTRUCTION>
 [Text Output]
-Structural Requirement: 
-• Generate a seamless sequence of 8 to 12 items in the `text_output` list.
-• Alternately mix `narrative` (scene description, action) and `character_message` (dialogue) to create a dynamic rhythm.
-
-Narrative Direction (Type: narrative):
-• Bridge the Gap: Your narration must logically connect the user's previous action/choice to the current scene's conclusion. Show the direct *consequences* of the user's choice.
-• Sensory & Objective: Describe the atmosphere, sounds, visual details, and physical reactions. 
-• Protagonist Constraint: Do NOT describe the Protagonist's internal thoughts or feelings. Only describe their observable actions and the world reacting to them. (Leave the feeling to the user).
-• Speaker Field: Must be `null`.
-
-Character Acting (Type: character_message):
-• Distinct Voice: Each character must speak in a tone consistent with their defined personality and the current mood (e.g., urgent, whispering, shouting).
-• Subtext over Exposition: Avoid having characters explain the plot directly. Reveal information through emotional outbursts, hesitations, or conflicts.
-• Speaker Field: Must match the exact name from `Active Characters`.
-
-Formatting:
-• Do not include quotation marks (" ") in the `text` field for dialogue; the UI will handle them.
-• Ensure the sequence naturally leads the user to the decision point for the `next_choice_description`.
+• Structural Requirement: 
+   - Generate a seamless sequence of 8 to 12 items in the `text_output` list.
+   - Alternately mix `narrative` and `character_message` to create a dynamic rhythm.
+• Narrative Direction (Web-Novel Style):
+   - Bridge the Gap: Logically connect the user's previous action/choice to the current scene's conclusion. Show the direct *consequences* of the user's choice.
+   - Internal Depth: Actively describe {protagonist}'s internal emotions (anger, hesitation, relief) and physical reactions (trembling, clenching fists) to match their personality.
+   - Agency Constraint: While describing emotions, NEVER alter the user's intended action/decision.
+   - Speaker Field: Must be `null` for narrative items.
+• Character Acting (Type: character_message):
+   - Distinct Voice: Characters must speak in a tone consistent with their defined personality and current mood.
+   - Subtext over Exposition: Avoid having characters explain the plot directly. Reveal information through emotional outbursts, hesitations, or conflicts.
+   - Speaker Field: Must match the exact name from `Active Characters`.
+• Formatting:
+   - Do not include quotation marks (" ") in the `text` field for dialogue.
+   - Ensure the sequence naturally leads the user to the decision point for the `next_choice_description`.
 
 [Transition Logic]
 {transition_logic}
